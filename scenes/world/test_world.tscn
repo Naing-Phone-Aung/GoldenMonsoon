@@ -7,10 +7,10 @@
 [node name="StaticBody2D" type="StaticBody2D" parent="." unique_id=1148480799]
 
 [node name="ColorRect" type="ColorRect" parent="StaticBody2D" unique_id=1753586069]
-offset_left = 215.0
-offset_top = 142.0
-offset_right = 650.0
-offset_bottom = 503.0
+offset_left = 216.0
+offset_top = 147.0
+offset_right = 651.0
+offset_bottom = 508.0
 color = Color(0.8617666, 0.95669407, 0.57491904, 1)
 
 [node name="Player" parent="." unique_id=1152506621 instance=ExtResource("1_tjl6x")]
