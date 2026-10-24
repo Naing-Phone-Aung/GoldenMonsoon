@@ -9,25 +9,40 @@ var last_direction: String = "south"
 
 
 func _physics_process(_delta: float) -> void:
-	var input_vector := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
-	var is_running := Input.is_key_pressed(KEY_SHIFT)
+	var input_vector := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var is_running := Input.is_action_pressed("run")
 
-	var current_speed := run_speed if is_running else walk_speed
-	velocity = input_vector * current_speed
+	var speed := run_speed if is_running else walk_speed
+	velocity = input_vector * speed
 	move_and_slide()
 
+	_update_direction(input_vector)
 	_update_animation(input_vector, is_running)
 
 
-func _update_animation(input_vector: Vector2, is_running: bool) -> void:
-	if input_vector.length() > 0.1:
-		# Horizontal takes priority over vertical when both are pressed (e.g. W+A)
-		if input_vector.x != 0:
-			last_direction = "east" if input_vector.x > 0 else "west"
-		else:
-			last_direction = "south" if input_vector.y > 0 else "north"
+func _update_direction(input_vector: Vector2) -> void:
+	if input_vector == Vector2.ZERO:
+		return
 
-		var prefix := "run_" if is_running else "walk_"
-		animated_sprite.play(prefix + last_direction)
+	# Horizontal takes priority when moving diagonally
+	if input_vector.x != 0:
+		last_direction = "east" if input_vector.x > 0 else "west"
 	else:
-		animated_sprite.play("idle_" + last_direction)
+		last_direction = "south" if input_vector.y > 0 else "north"
+
+
+func _update_animation(input_vector: Vector2, is_running: bool) -> void:
+	var action := "idle"
+	if input_vector != Vector2.ZERO:
+		action = "run" if is_running else "walk"
+
+	var view := "side"
+	match last_direction:
+		"south":
+			view = "down"
+		"north":
+			view = "up"
+
+	# Side animations face right; flip them for west
+	animated_sprite.flip_h = last_direction == "west"
+	animated_sprite.play(action + "_" + view)
