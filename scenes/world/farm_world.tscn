@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://d25srgbokb6hi"]
+
+[node name="FarmWorld" type="Node2D" unique_id=363745502]
+
+[node name="GroundLayer" type="TileMapLayer" parent="." unique_id=1206688441]
+
+[node name="WaterLayer" type="TileMapLayer" parent="." unique_id=916330274]
+
+[node name="BeachLayer" type="TileMapLayer" parent="." unique_id=944021385]
+
+[node name="PathLayer" type="TileMapLayer" parent="." unique_id=1298012206]
+
+[node name="FarmShapeLayer" type="TileMapLayer" parent="." unique_id=1692937945]
+visible = false
+collision_enabled = false
+
+[node name="FarmLayer" type="TileMapLayer" parent="." unique_id=898174921]
+
+[node name="CliffLayer" type="TileMapLayer" parent="." unique_id=365965204]
