@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(\"/d/Project X/Godot_v4.7.2-stable_win64_console.exe\" --headless --path . --script debug_tiles.gd)"
+    ]
+  }
+}

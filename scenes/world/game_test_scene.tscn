@@ -1,7 +1,10 @@
 [gd_scene format=4 uid="uid://cuipgpbix0vtn"]
 
 [ext_resource type="TileSet" uid="uid://ciojkehsuhtd6" path="res://scenes/tiles/tileset_farm.tres" id="1_cr4tn"]
+[ext_resource type="PackedScene" uid="uid://drlop643p5c7g" path="res://scenes/animals/chicken/Chick/chick.tscn" id="3_3gnd8"]
 [ext_resource type="PackedScene" uid="uid://gn8cwjgdlvms" path="res://scenes/player/player.tscn" id="3_c7d6b"]
+[ext_resource type="PackedScene" uid="uid://bvlvr1hx0f8cn" path="res://scenes/animals/chicken/Cock/cock.tscn" id="4_o2dbv"]
+[ext_resource type="PackedScene" uid="uid://jo6uwadddjxp" path="res://scenes/animals/chicken/Hen/hen.tscn" id="5_n5n7m"]
 
 [node name="game_test_scene" type="Node2D" unique_id=1574374871]
 
@@ -23,3 +26,12 @@ tile_set = ExtResource("1_cr4tn")
 
 [node name="Player" parent="." unique_id=337715749 instance=ExtResource("3_c7d6b")]
 position = Vector2(81, 8)
+
+[node name="Chick" parent="." unique_id=57859010 instance=ExtResource("3_3gnd8")]
+position = Vector2(115, 87)
+
+[node name="Cock" parent="." unique_id=34500267 instance=ExtResource("4_o2dbv")]
+position = Vector2(149, 55)
+
+[node name="Hen" parent="." unique_id=490460324 instance=ExtResource("5_n5n7m")]
+position = Vector2(173, -3)
