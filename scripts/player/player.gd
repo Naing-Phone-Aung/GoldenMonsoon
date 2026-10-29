@@ -10,14 +10,22 @@ const TILE_SIZE := 16
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 
 var last_direction: String = "south"
-var current_tool: String = ""            # empty hands until you pick up a tool
-var tools: Array[String] = ["seeds"]     # tools you own: "hoe", "water", "seeds"
+const HOTBAR_SIZE := 10
+const MAX_STACK := 99
+
+# Hotbar slots 1..0 (keys 1-9 = slots 0-8, key 0 = slot 9). "" = empty slot.
+var hotbar: Array[String] = ["hoe", "water", "", "", "", "", "", "", "", ""]
+# Stack size per slot. -1 = a tool (no number shown), 0 = empty slot.
+var hotbar_counts: Array[int] = [-1, -1, 0, 0, 0, 0, 0, 0, 0, 0]
+var selected_slot: int = 0
+var current_tool: String = "hoe"         # always mirrors hotbar[selected_slot]
 var items: Dictionary = {}               # things you carry, e.g. {"egg": 2}
 var is_busy: bool = false
 
 
 func _ready() -> void:
 	add_to_group("player")
+	current_tool = hotbar[selected_slot]
 
 
 func _physics_process(_delta: float) -> void:
@@ -34,21 +42,25 @@ func _physics_process(_delta: float) -> void:
 	_update_direction(input_vector)
 	_update_animation(input_vector, is_running)
 
-	if Input.is_action_just_pressed("use_tool"):
-		_use_tool()
-
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Event-based (not polled) so a click the hotbar already used never swings the tool.
+	if event.is_action_pressed("use_tool"):
+		if not is_busy:
+			_use_tool()
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
-		match event.keycode:
-			KEY_E:
-				_try_pickup()
-			KEY_1:
-				_select_tool("hoe")
-			KEY_2:
-				_select_tool("water")
-			KEY_3:
-				_select_tool("seeds")
+		if event.keycode == KEY_E:
+			_try_pickup()
+		elif event.keycode >= KEY_1 and event.keycode <= KEY_9:
+			select_slot(event.keycode - KEY_1)      # keys 1..9 -> slots 0..8
+		elif event.keycode == KEY_0:
+			select_slot(9)                          # key 0 -> last slot
+	elif event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_cycle_slot(-1)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_cycle_slot(1)
 
 
 # ---------------------------------------------------------------- items
@@ -57,26 +69,55 @@ func _try_pickup() -> void:
 		return
 	for pickup in get_tree().get_nodes_in_group("pickup"):
 		if pickup.global_position.distance_to(global_position) < pickup.pickup_range:
-			add_item(pickup.item_id)
-			pickup.queue_free()
+			if add_item(pickup.item_id):        # hotbar full -> item stays on the ground
+				pickup.queue_free()
 			return
 
 
-func add_item(item_id: String) -> void:
+## Returns true if the item was stored. Eggs stack up to MAX_STACK per slot.
+func add_item(item_id: String) -> bool:
 	if item_id == "hoe" or item_id == "water":
-		if item_id not in tools:
-			tools.append(item_id)
-		current_tool = item_id               # a new tool goes straight into your hand
+		if item_id in hotbar:
+			return false
+		var free_tool := hotbar.find("")
+		if free_tool == -1:
+			return false
+		hotbar[free_tool] = item_id
+		hotbar_counts[free_tool] = -1
 	else:
+		var slot := -1
+		for i in HOTBAR_SIZE:                    # 1) top up an existing stack
+			if hotbar[i] == item_id and hotbar_counts[i] < MAX_STACK:
+				slot = i
+				break
+		if slot == -1:                           # 2) otherwise take the first empty slot
+			slot = hotbar.find("")
+		if slot == -1:
+			return false                         # no room
+		hotbar[slot] = item_id
+		hotbar_counts[slot] += 1
 		items[item_id] = items.get(item_id, 0) + 1
 	inventory_changed.emit()
+	return true
 
 
-func _select_tool(tool_name: String) -> void:
-	if tool_name not in tools:
+func select_slot(index: int) -> void:
+	if is_busy or index < 0 or index >= HOTBAR_SIZE:
 		return
-	current_tool = tool_name
+	selected_slot = index
+	current_tool = hotbar[index]
 	inventory_changed.emit()
+
+
+# Mouse wheel: jump to the next/previous slot that has something in it.
+func _cycle_slot(direction: int) -> void:
+	if is_busy:
+		return
+	for step in range(1, HOTBAR_SIZE + 1):
+		var i := posmod(selected_slot + direction * step, HOTBAR_SIZE)
+		if hotbar[i] != "":
+			select_slot(i)
+			return
 
 
 func _use_tool() -> void:
@@ -88,13 +129,15 @@ func _use_tool() -> void:
 		if farm.harvest(cell):          # a ripe crop in front of you is picked, even with empty hands
 			return
 
-	if current_tool == "":
-		return
+	if current_tool != "hoe" and current_tool != "water":
+		return                                   # eggs etc. are not tools
 
 	is_busy = true
 	velocity = Vector2.ZERO
-	if current_tool != "seeds":
-		animated_sprite.play(current_tool + "_" + _view())
+	# The swing animation plays ONLY here, while the action happens.
+	var anim := current_tool + "_" + _view()
+	if animated_sprite.sprite_frames.has_animation(anim):
+		animated_sprite.play(anim)
 		await animated_sprite.animation_finished
 	if farm:
 		farm.use_tool(current_tool, cell)
@@ -118,13 +161,7 @@ func _update_animation(input_vector: Vector2, is_running: bool) -> void:
 	animated_sprite.flip_h = last_direction == "west"
 
 	if input_vector == Vector2.ZERO:
-		if current_tool == "hoe" or current_tool == "water":
-			# Stand holding the tool - freeze on the first frame of its swing animation.
-			animated_sprite.play(current_tool + "_" + _view())
-			animated_sprite.pause()
-			animated_sprite.frame = 0
-		else:
-			animated_sprite.play("idle_" + _view())
+		animated_sprite.play("idle_" + _view())     # normal idle, whatever tool is selected
 	else:
 		var action := "run" if is_running else "walk"
 		animated_sprite.play(action + "_" + _view())

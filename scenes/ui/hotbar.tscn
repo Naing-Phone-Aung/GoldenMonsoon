@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/hotbar.gd" id="1_hotbar"]
+
+[node name="Hotbar" type="CanvasLayer"]
+layer = 10
+
+[node name="WoodHotbar" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_hotbar")

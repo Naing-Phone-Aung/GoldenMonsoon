@@ -12,8 +12,7 @@
 [ext_resource type="PackedScene" path="res://scenes/animals/sheep/sheep.tscn" id="10_ccyey"]
 [ext_resource type="PackedScene" uid="uid://q8f0xrwmmvh1" path="res://scenes/animals/cow/cow.tscn" id="11_21umo"]
 [ext_resource type="PackedScene" path="res://scenes/items/egg.tscn" id="12_1ggg8"]
-[ext_resource type="PackedScene" path="res://scenes/items/hoe.tscn" id="13_ccyey"]
-[ext_resource type="PackedScene" path="res://scenes/items/watering_can.tscn" id="14_21umo"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hotbar.tscn" id="14_hotbar"]
 
 [node name="game_test_scene" type="Node2D" unique_id=1574374871]
 
@@ -66,8 +65,13 @@ position = Vector2(53, 66)
 [node name="Egg" parent="." unique_id=904085438 instance=ExtResource("12_1ggg8")]
 position = Vector2(276, -17)
 
-[node name="Hoe" parent="." unique_id=686367118 instance=ExtResource("13_ccyey")]
-position = Vector2(276, 26)
+[node name="Egg2" parent="." unique_id=1453757548 instance=ExtResource("12_1ggg8")]
+position = Vector2(255, -17)
 
-[node name="WateringCan" parent="." unique_id=1628974258 instance=ExtResource("14_21umo")]
-position = Vector2(277, 61)
+[node name="Egg3" parent="." unique_id=2050470064 instance=ExtResource("12_1ggg8")]
+position = Vector2(273, 12)
+
+[node name="Egg4" parent="." unique_id=672079943 instance=ExtResource("12_1ggg8")]
+position = Vector2(258, 10)
+
+[node name="Hotbar" parent="." unique_id=574620227 instance=ExtResource("14_hotbar")]
