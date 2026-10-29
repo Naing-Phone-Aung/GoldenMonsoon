@@ -4,7 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://b5rs1bq3mcpey" path="res://assets/characters/player/player.png" id="2_gmlin"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_b1lj4"]
-radius = 16.548054
+radius = 18.219599
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_qlg0r"]
 atlas = ExtResource("2_gmlin")
@@ -995,6 +995,7 @@ scale = Vector2(0.55, 0.55)
 shape = SubResource("CircleShape2D_b1lj4")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=687408911]
+position = Vector2(0, 1.9999999)
 scale = Vector2(0.981, 1)
 sprite_frames = SubResource("SpriteFrames_13qdw")
 animation = &"water_up"

@@ -103,7 +103,7 @@ func _cache_icon_bounds() -> void:
 
 func _slot_rect(i: int) -> Rect2:
 	var x := end_pad + i * (slot_px + slot_gap)
-	var y := top_y + (bar_h - slot_px) / 2
+	var y := top_y + (bar_h - slot_px) / 2.0
 	return Rect2(x, y, slot_px, slot_px)
 
 
@@ -147,7 +147,7 @@ func _draw() -> void:
 	draw_rect(Rect2(2, top_y + 2, bar_w - 4, bar_h - 4), C_WOOD)
 	draw_rect(Rect2(2, top_y + 2, bar_w - 4, 2), C_HI)
 	draw_rect(Rect2(2, top_y + bar_h - 4, bar_w - 4, 2), C_SHADE)
-	draw_rect(Rect2(2, top_y + bar_h / 2 - 1, bar_w - 4, 2), C_SEAM)   # plank join
+	draw_rect(Rect2(2, top_y + bar_h / 2.0 - 1, bar_w - 4, 2), C_SEAM)   # plank join
 	for g in grain:
 		var p: Vector2i = g[0]
 		draw_rect(Rect2(p.x, p.y, g[1], 1), C_GRAIN_D if g[2] else C_GRAIN_L)

@@ -26,6 +26,23 @@ var is_busy: bool = false
 func _ready() -> void:
 	add_to_group("player")
 	current_tool = hotbar[selected_slot]
+	_ensure_farm.call_deferred()
+
+
+# If the scene has no Farm node, add one right after the tile layers (so farmland
+# draws above the path but under the player and animals).
+func _ensure_farm() -> void:
+	if get_tree().get_first_node_in_group("farm") != null:
+		return
+	var parent := get_parent()
+	var farm := Farm.new()
+	farm.name = "Farm"
+	parent.add_child(farm)
+	var last_layer := -1
+	for i in parent.get_child_count():
+		if parent.get_child(i) is TileMapLayer:
+			last_layer = i
+	parent.move_child(farm, last_layer + 1)
 
 
 func _physics_process(_delta: float) -> void:
@@ -125,7 +142,7 @@ func _use_tool() -> void:
 	var farm := get_tree().get_first_node_in_group("farm")
 	var cell := Vector2i.ZERO
 	if farm:
-		cell = farm.world_to_cell(global_position + _facing_vector() * TILE_SIZE)
+		cell = farm.world_to_cell(get_target_position())
 		if farm.harvest(cell):          # a ripe crop in front of you is picked, even with empty hands
 			return
 
@@ -174,6 +191,11 @@ func _view() -> String:
 		"north":
 			return "up"
 	return "side"
+
+
+## The point one tile in front of the player - the tile a tool hits.
+func get_target_position() -> Vector2:
+	return global_position + _facing_vector() * TILE_SIZE
 
 
 func _facing_vector() -> Vector2:
