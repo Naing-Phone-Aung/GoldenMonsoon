@@ -574,7 +574,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_5gtgg")
 }],
-"loop": 1,
+"loop": 0,
 "name": &"hoe_down",
 "speed": 8.0
 }, {
@@ -603,7 +603,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_kvlxm")
 }],
-"loop": 1,
+"loop": 0,
 "name": &"hoe_side",
 "speed": 8.0
 }, {
@@ -632,7 +632,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_007i1")
 }],
-"loop": 1,
+"loop": 0,
 "name": &"hoe_up",
 "speed": 8.0
 }, {
@@ -922,7 +922,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_5mf0n")
 }],
-"loop": 1,
+"loop": 0,
 "name": &"water_down",
 "speed": 8.0
 }, {
@@ -951,7 +951,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_vo27k")
 }],
-"loop": 1,
+"loop": 0,
 "name": &"water_side",
 "speed": 8.0
 }, {
@@ -980,7 +980,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_1u1sw")
 }],
-"loop": 1,
+"loop": 0,
 "name": &"water_up",
 "speed": 8.0
 }]
@@ -997,9 +997,8 @@ shape = SubResource("CircleShape2D_b1lj4")
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=687408911]
 scale = Vector2(0.981, 1)
 sprite_frames = SubResource("SpriteFrames_13qdw")
-animation = &"hoe_down"
+animation = &"water_up"
 autoplay = "idle_side"
-frame_progress = 0.50114554
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1912686203]
 zoom = Vector2(1.735, 1.735)

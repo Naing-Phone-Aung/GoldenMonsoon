@@ -5,6 +5,15 @@
 [ext_resource type="PackedScene" uid="uid://gn8cwjgdlvms" path="res://scenes/player/player.tscn" id="3_c7d6b"]
 [ext_resource type="PackedScene" uid="uid://bvlvr1hx0f8cn" path="res://scenes/animals/chicken/Cock/cock.tscn" id="4_o2dbv"]
 [ext_resource type="PackedScene" uid="uid://jo6uwadddjxp" path="res://scenes/animals/chicken/Hen/hen.tscn" id="5_n5n7m"]
+[ext_resource type="PackedScene" path="res://scenes/animals/calf/calf.tscn" id="6_dns0e"]
+[ext_resource type="PackedScene" path="res://scenes/animals/bull/bull.tscn" id="7_cxnn2"]
+[ext_resource type="PackedScene" path="res://scenes/animals/lamb/lamb.tscn" id="8_xqgs6"]
+[ext_resource type="PackedScene" path="res://scenes/animals/ram/ram.tscn" id="9_1ggg8"]
+[ext_resource type="PackedScene" path="res://scenes/animals/sheep/sheep.tscn" id="10_ccyey"]
+[ext_resource type="PackedScene" uid="uid://q8f0xrwmmvh1" path="res://scenes/animals/cow/cow.tscn" id="11_21umo"]
+[ext_resource type="PackedScene" path="res://scenes/items/egg.tscn" id="12_1ggg8"]
+[ext_resource type="PackedScene" path="res://scenes/items/hoe.tscn" id="13_ccyey"]
+[ext_resource type="PackedScene" path="res://scenes/items/watering_can.tscn" id="14_21umo"]
 
 [node name="game_test_scene" type="Node2D" unique_id=1574374871]
 
@@ -35,3 +44,30 @@ position = Vector2(149, 55)
 
 [node name="Hen" parent="." unique_id=490460324 instance=ExtResource("5_n5n7m")]
 position = Vector2(173, -3)
+
+[node name="Calf" parent="." unique_id=1421967631 instance=ExtResource("6_dns0e")]
+position = Vector2(36, 56)
+
+[node name="Bull" parent="." unique_id=1210744246 instance=ExtResource("7_cxnn2")]
+position = Vector2(21, 83)
+
+[node name="Lamb" parent="." unique_id=1457304203 instance=ExtResource("8_xqgs6")]
+position = Vector2(53, 157)
+
+[node name="Ram" parent="." unique_id=1884160403 instance=ExtResource("9_1ggg8")]
+position = Vector2(34, 141)
+
+[node name="Sheep" parent="." unique_id=652331861 instance=ExtResource("10_ccyey")]
+position = Vector2(59, 133)
+
+[node name="Cow" parent="." unique_id=189155242 instance=ExtResource("11_21umo")]
+position = Vector2(53, 66)
+
+[node name="Egg" parent="." unique_id=904085438 instance=ExtResource("12_1ggg8")]
+position = Vector2(276, -17)
+
+[node name="Hoe" parent="." unique_id=686367118 instance=ExtResource("13_ccyey")]
+position = Vector2(276, 26)
+
+[node name="WateringCan" parent="." unique_id=1628974258 instance=ExtResource("14_21umo")]
+position = Vector2(277, 61)
