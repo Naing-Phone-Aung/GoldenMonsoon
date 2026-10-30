@@ -38,7 +38,6 @@ tile_set = ExtResource("1_cr4tn")
 
 [node name="Player" parent="." unique_id=337715749 instance=ExtResource("3_c7d6b")]
 position = Vector2(81, 8)
-raining = true
 
 [node name="Chick" parent="." unique_id=57859010 instance=ExtResource("3_3gnd8")]
 position = Vector2(115, 87)
@@ -85,3 +84,4 @@ position = Vector2(258, 10)
 
 [node name="Clock" parent="CanvasLayer" unique_id=128106543 instance=ExtResource("15_ccyey")]
 pixel_font = ExtResource("15_21umo")
+skip_to_next_season = true

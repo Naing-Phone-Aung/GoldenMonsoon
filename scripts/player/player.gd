@@ -7,11 +7,19 @@ const TILE_SIZE := 16
 @export var walk_speed: float = 100.0
 @export var run_speed: float = 200.0
 ## Where the player's feet are, relative to the node origin (the sprite centre).
-## The tile you stand on - and so the tile in front of you - is worked out from this point.
-## Tools hit the tile in front of the FEET, like Stardew Valley. Nudge Y if it feels off by a row.
+## The tile you stand on, and so the clickable area around you, is worked out from this point.
+## Nudge Y if the area feels off by a row.
 @export var feet_offset: Vector2 = Vector2(0, 14)
-## Shows the green/red square on the tile your tool will hit.
-@export var show_target: bool = false
+## Click-to-use: you can use a tool on any tile within this many tiles of your feet
+## (1 = the 3x3 square around you, 2 = 5x5, ...).
+@export var tool_range: int = 1
+## Master switch for the target highlight on the tile under the mouse.
+@export var show_target: bool = true
+## false = the target only appears on tiles the tool can work on (green).
+## true  = the target always appears on any tile in range (green = works, red = doesn't).
+@export var always_show_target: bool = false
+## Draws the faint white square of tiles around the player that you can click.
+@export var show_action_area: bool = false
 ## Tick to make it rain (or press R in game). Rain also waters farmland automatically.
 @export var raining: bool = false:
 	set(value):
@@ -88,8 +96,15 @@ func _physics_process(_delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	# Event-based (not polled) so a click the hotbar already used never swings the tool.
 	if event.is_action_pressed("use_tool"):
-		if not is_busy:
-			_use_tool()
+		if is_busy:
+			return
+		var farm := get_tree().get_first_node_in_group("farm")
+		if farm == null:
+			return
+		# Left click: use the tool on the tile under the cursor, if it is close enough.
+		var clicked: Vector2i = farm.world_to_cell(get_global_mouse_position())
+		if is_in_tool_range(farm, clicked):
+			_use_tool(farm, clicked)
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_E:
@@ -162,28 +177,42 @@ func _cycle_slot(direction: int) -> void:
 			return
 
 
-func _use_tool() -> void:
-	# "farm" group is optional for now - digging/watering wires up once a Farm node exists.
-	var farm := get_tree().get_first_node_in_group("farm")
-	var cell := Vector2i.ZERO
-	if farm:
-		cell = farm.world_to_cell(get_target_position())
-		if farm.harvest(cell):          # a ripe crop in front of you is picked, even with empty hands
-			return
+func _use_tool(farm: Node, cell: Vector2i) -> void:
+	if farm.harvest(cell):     # a ripe crop is picked, even with empty hands
+		return
 
 	if current_tool != "hoe" and current_tool != "water":
 		return                                   # eggs etc. are not tools
 
 	is_busy = true
 	velocity = Vector2.ZERO
+	_face_cell(farm, cell)                        # swing toward the tile you clicked
 	# The swing animation plays ONLY here, while the action happens.
 	var anim := current_tool + "_" + _view()
 	if animated_sprite.sprite_frames.has_animation(anim):
 		animated_sprite.play(anim)
 		await animated_sprite.animation_finished
-	if farm:
-		farm.use_tool(current_tool, cell)
+	farm.use_tool(current_tool, cell)
 	is_busy = false
+
+
+## Turn to look at a tile (side-to-side wins ties, like movement does).
+func _face_cell(farm: Node, cell: Vector2i) -> void:
+	var delta: Vector2 = farm.cell_to_world(cell) - get_feet_position()
+	if absf(delta.x) < 1.0 and absf(delta.y) < 1.0:
+		return                                   # clicked the tile you stand on: keep facing
+	if absf(delta.x) >= absf(delta.y):
+		last_direction = "east" if delta.x > 0 else "west"
+	else:
+		last_direction = "south" if delta.y > 0 else "north"
+	animated_sprite.flip_h = last_direction == "west"
+
+
+## True if the tile is inside the square of tiles around the player's feet.
+func is_in_tool_range(farm: Node, cell: Vector2i) -> bool:
+	var feet: Vector2i = farm.world_to_cell(get_feet_position())
+	var d := (cell - feet).abs()
+	return maxi(d.x, d.y) <= tool_range
 
 
 # ---------------------------------------------------------------- movement helpers
@@ -218,17 +247,5 @@ func _view() -> String:
 	return "side"
 
 
-## The point one tile in front of the player's feet - the tile a tool hits.
-func get_target_position() -> Vector2:
-	return global_position + feet_offset + _facing_vector() * TILE_SIZE
-
-
-func _facing_vector() -> Vector2:
-	match last_direction:
-		"north":
-			return Vector2.UP
-		"east":
-			return Vector2.RIGHT
-		"west":
-			return Vector2.LEFT
-	return Vector2.DOWN
+func get_feet_position() -> Vector2:
+	return global_position + feet_offset

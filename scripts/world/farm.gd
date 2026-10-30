@@ -9,7 +9,7 @@ extends Node2D
 ## picked from which neighbours are farmland, so dry and wet patches still join up.
 ##
 ## The player talks to this node through the "farm" group:
-##   world_to_cell(pos), harvest(cell), use_tool(tool_name, cell)
+##   world_to_cell(pos), cell_to_world(cell), harvest(cell), use_tool(tool_name, cell)
 
 enum Soil { DRY, WET, SEEDED, WET_SEEDED }   # = which 6-row block of FarmLand_Tile.png
 
@@ -42,10 +42,13 @@ const NEIGHBOR_OFFSETS := [
 
 var raining := false                 # set by Weather; rain waters farmland automatically
 var layer: TileMapLayer
-var cursor: Node2D                   # square showing which tile the tool will hit
-var cursor_cell := Vector2i.ZERO
+var cursor: Node2D                   # draws the action area + the tile under the mouse
+var cursor_cell := Vector2i.ZERO     # tile under the mouse
 var cursor_ok := false
 var cursor_shown := false
+var area_shown := false              # the clickable square around the player
+var area_center := Vector2i.ZERO
+var area_range := 1
 var solid_path_tiles: Dictionary = {}  # atlas coords of Path tiles that are 100% path (no grass pixels)
 var soil: Dictionary = {}            # Vector2i cell -> Soil
 var shape_lookup: Dictionary = {}    # neighbour mask -> atlas coords (in the dry block)
@@ -69,16 +72,26 @@ func _ready() -> void:
 		set_raining(true)
 
 
-# Green square = the tool will work on that tile, red = it won't.
+# Green tile = under the mouse and the tool works there (red only when always_show_target is on).
+# Faint square (optional, show_action_area) = the tiles you can click.
 func _process(_delta: float) -> void:
 	var player := get_tree().get_first_node_in_group("player")
 	if player == null:
 		return
 	var tool_name: String = player.current_tool
-	var shown: bool = player.show_target and (tool_name == "hoe" or tool_name == "water")
-	var cell := world_to_cell(player.get_target_position())
-	var ok := shown and _can_use(tool_name, cell)
-	if shown != cursor_shown or cell != cursor_cell or ok != cursor_ok:
+	var is_tool := tool_name == "hoe" or tool_name == "water"
+	var center := world_to_cell(player.get_feet_position())
+	var cell := world_to_cell(player.get_global_mouse_position())
+	var show_area: bool = player.show_action_area and is_tool
+	var in_range: bool = is_tool and player.is_in_tool_range(self, cell)
+	var ok := in_range and _can_use(tool_name, cell)
+	# Default: target only on tiles the tool works on. always_show_target: any tile in range.
+	var shown: bool = player.show_target and in_range and (ok or player.always_show_target)
+	if show_area != area_shown or center != area_center or player.tool_range != area_range \
+			or shown != cursor_shown or cell != cursor_cell or ok != cursor_ok:
+		area_shown = show_area
+		area_center = center
+		area_range = player.tool_range
 		cursor_shown = shown
 		cursor_cell = cell
 		cursor_ok = ok
@@ -86,13 +99,17 @@ func _process(_delta: float) -> void:
 
 
 func _draw_cursor() -> void:
-	if not cursor_shown:
-		return
 	var size := Vector2(layer.tile_set.tile_size)
-	var rect := Rect2(layer.map_to_local(cursor_cell) - size / 2.0, size)
-	var color := Color(0.45, 1.0, 0.45) if cursor_ok else Color(1.0, 0.45, 0.4)
-	cursor.draw_rect(rect, Color(color, 0.2))
-	cursor.draw_rect(rect, color, false, 1.0)
+	if area_shown:
+		var top_left := layer.map_to_local(area_center - Vector2i(area_range, area_range)) - size / 2.0
+		var area := Rect2(top_left, size * float(area_range * 2 + 1))
+		cursor.draw_rect(area, Color(1, 1, 1, 0.12))
+		cursor.draw_rect(area, Color(1, 1, 1, 0.5), false, 1.0)
+	if cursor_shown:
+		var rect := Rect2(layer.map_to_local(cursor_cell) - size / 2.0, size)
+		var color := Color(0.45, 1.0, 0.45) if cursor_ok else Color(1.0, 0.45, 0.4)
+		cursor.draw_rect(rect, Color(color, 0.3))
+		cursor.draw_rect(rect, color, false, 1.0)
 
 
 func _can_use(tool_name: String, cell: Vector2i) -> bool:
@@ -108,6 +125,11 @@ func _can_use(tool_name: String, cell: Vector2i) -> bool:
 # ---------------------------------------------------------------- player API
 func world_to_cell(world_pos: Vector2) -> Vector2i:
 	return layer.local_to_map(layer.to_local(world_pos))
+
+
+## World position of the centre of a tile.
+func cell_to_world(cell: Vector2i) -> Vector2:
+	return layer.to_global(layer.map_to_local(cell))
 
 
 func harvest(_cell: Vector2i) -> bool:

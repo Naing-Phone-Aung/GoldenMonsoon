@@ -10,7 +10,7 @@ signal day_ended            # fires at 2:00 am -> player passes out / must sleep
 enum Season { SUMMER, RAINY, THADINGYUT, WINTER }
 
 const SEASON_NAMES := ["Summer", "Rainy", "Thadingyut", "Winter"]
-const WEEKDAYS := ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+const WEEKDAYS := ["Monday", "Tueday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 const DAYS_PER_SEASON := 28            # 4 weeks x 7 days
 const START_HOUR := 6                  # day starts 6:00 am
 const END_HOUR := 26                   # 26 = 2:00 am next morning (Stardew style)
