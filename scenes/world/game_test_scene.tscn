@@ -84,4 +84,5 @@ position = Vector2(258, 10)
 
 [node name="Clock" parent="CanvasLayer" unique_id=128106543 instance=ExtResource("15_ccyey")]
 pixel_font = ExtResource("15_21umo")
+skip_to_next_day = true
 skip_to_next_season = true

@@ -1,6 +1,8 @@
 extends CharacterBody2D
 
 signal inventory_changed
+signal energy_changed
+signal energy_empty                      # energy just hit 0 (the energy bar blinks red)
 
 const TILE_SIZE := 16
 
@@ -29,6 +31,28 @@ const TILE_SIZE := 16
 			if weather != null:
 				weather.set_raining(value)
 
+@export_group("Energy")
+## Full energy bar. Everything below is in the same units, so tweak freely.
+@export var max_energy: float = 100.0:
+	set(value):
+		max_energy = maxf(1.0, value)
+		energy = minf(energy, max_energy)
+		energy_changed.emit()
+## Energy one swing of the hoe costs.
+@export var hoe_energy_cost: float = 2.0
+## Energy one use of the watering can costs.
+@export var water_energy_cost: float = 1.0
+## Refill to full when a new day starts (after sleeping).
+@export var refill_on_new_day: bool = true
+## When energy reaches 0 the player faints and the game restarts (placeholder until sleeping is added).
+@export var faint_at_zero_energy: bool = true
+## Tick to refill energy right now (handy for testing).
+@export var refill_energy: bool = false:
+	set(value):
+		if value:
+			restore_energy()
+@export_group("")
+
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 
 var last_direction: String = "south"
@@ -43,13 +67,102 @@ var selected_slot: int = 0
 var current_tool: String = "hoe"         # always mirrors hotbar[selected_slot]
 var items: Dictionary = {}               # things you carry, e.g. {"egg": 2}
 var is_busy: bool = false
+var energy: float = 100.0                # current energy (starts full)
+var fainting: bool = false
 
 
 func _ready() -> void:
 	add_to_group("player")
 	current_tool = hotbar[selected_slot]
+	energy = max_energy
+	_fade_in_after_restart()
+	var tm := get_node_or_null("/root/TimeManager")
+	if tm:
+		tm.day_changed.connect(_on_new_day)
 	_ensure_farm.call_deferred()
 	_ensure_weather.call_deferred()
+
+
+# ---------------------------------------------------------------- energy
+func get_tool_cost(tool_name: String) -> float:
+	match tool_name:
+		"hoe":
+			return hoe_energy_cost
+		"water":
+			return water_energy_cost
+	return 0.0
+
+
+func restore_energy() -> void:
+	energy = max_energy
+	energy_changed.emit()
+
+
+func _on_new_day(_day: int, _season: int, _year: int) -> void:
+	if refill_on_new_day:
+		restore_energy()
+
+
+# ---------------------------------------------------------------- fainting
+## Energy hit 0: play the faint animation, fade to black, then restart (for now).
+func _faint() -> void:
+	if fainting:
+		return
+	fainting = true
+	is_busy = true
+	velocity = Vector2.ZERO
+	animated_sprite.flip_h = false
+	energy_empty.emit()
+	var frames := animated_sprite.sprite_frames
+	frames.set_animation_loop("faint", false)    # play once and stay lying down
+	animated_sprite.play("faint")
+	await animated_sprite.animation_finished
+	await get_tree().create_timer(0.8).timeout   # lie there for a moment
+
+	var fade := _make_fade_layer()
+	var tween := create_tween()
+	tween.tween_property(fade, "color:a", 1.0, 1.0)
+	await tween.finished
+	_restart_game()
+
+
+## Full restart for now: clock back to day 1, scene reloaded. The black screen stays up
+## during the reload and fades out again in the new scene (see _fade_in_after_restart).
+func _restart_game() -> void:
+	var tm := get_node_or_null("/root/TimeManager")
+	if tm:
+		tm.year = 1
+		tm.season = 0
+		tm.day = 1
+		tm.hour = tm.START_HOUR
+		tm.minute = 0
+		tm._accum = 0.0
+		tm.paused = false
+	get_tree().reload_current_scene()
+
+
+# A black overlay that lives on the root, so it survives the scene reload.
+func _make_fade_layer() -> ColorRect:
+	var layer := CanvasLayer.new()
+	layer.layer = 100
+	layer.add_to_group("faint_fade")
+	var rect := ColorRect.new()
+	rect.color = Color(0, 0, 0, 0)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(rect)
+	get_tree().root.add_child(layer)
+	return rect
+
+
+func _fade_in_after_restart() -> void:
+	var layer := get_tree().get_first_node_in_group("faint_fade")
+	if layer == null:
+		return
+	var rect := layer.get_child(0) as ColorRect
+	var tween := layer.create_tween()
+	tween.tween_property(rect, "color:a", 0.0, 1.0)
+	tween.tween_callback(layer.queue_free)
 
 
 # Rain is added automatically too (above the world, below the hotbar).
@@ -184,6 +297,15 @@ func _use_tool(farm: Node, cell: Vector2i) -> void:
 	if current_tool != "hoe" and current_tool != "water":
 		return                                   # eggs etc. are not tools
 
+	if fainting:
+		return
+	if energy <= 0.0:
+		energy_empty.emit()                       # out of energy: the bar blinks red
+		return
+	# A swing is allowed while there is any energy left; the last one takes you to 0.
+	energy = maxf(0.0, energy - get_tool_cost(current_tool))
+	energy_changed.emit()
+
 	is_busy = true
 	velocity = Vector2.ZERO
 	_face_cell(farm, cell)                        # swing toward the tile you clicked
@@ -193,6 +315,9 @@ func _use_tool(farm: Node, cell: Vector2i) -> void:
 		animated_sprite.play(anim)
 		await animated_sprite.animation_finished
 	farm.use_tool(current_tool, cell)
+	if energy <= 0.0 and faint_at_zero_energy:
+		await _faint()                            # stays busy: no moving while fainted
+		return
 	is_busy = false
 
 

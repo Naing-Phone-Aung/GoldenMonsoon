@@ -6,7 +6,12 @@ extends Node2D
 ##
 ## FarmLand_Tile.png holds 4 soil looks, each a full 47-tile autotile set stacked
 ## 6 rows apart (see Soil below). Soil state is tracked here, and the tile shape is
-## picked from which neighbours are farmland, so dry and wet patches still join up.
+## picked from which neighbours are farmland.
+##
+## Dry look  : shaped by ALL farmland neighbours (FarmLayer).
+## Wet look  : shaped by WET neighbours only, drawn on top of the dry tile. The wet tile's
+##             background pixels are filled in from the dry tile underneath, so a wet patch gets
+##             its own rounded outline instead of copying the dry patch's outline.
 ##
 ## The player talks to this node through the "farm" group:
 ##   world_to_cell(pos), cell_to_world(cell), harvest(cell), use_tool(tool_name, cell)
@@ -19,6 +24,7 @@ const FARM_TERRAIN := 4            # "Farm" terrain
 const PATH_SOURCE_ID := 2          # Path_Tile.png in the tileset - the only ground you can till
 const BLOCK_ROWS := 6              # rows per soil look in the atlas
 const ATLAS_COLS := 8
+const BG_COLOR := Color8(228, 166, 114)   # outer background colour of the farm tiles (path colour)
 
 # Neighbour order used for the shape mask (matches the tileset's peering bits).
 const NEIGHBOR_BITS := [
@@ -42,6 +48,7 @@ const NEIGHBOR_OFFSETS := [
 
 var raining := false                 # set by Weather; rain waters farmland automatically
 var layer: TileMapLayer
+var wet_overlay: Node2D              # holds one Sprite2D per wet tile
 var cursor: Node2D                   # draws the action area + the tile under the mouse
 var cursor_cell := Vector2i.ZERO     # tile under the mouse
 var cursor_ok := false
@@ -53,6 +60,11 @@ var solid_path_tiles: Dictionary = {}  # atlas coords of Path tiles that are 100
 var soil: Dictionary = {}            # Vector2i cell -> Soil
 var shape_lookup: Dictionary = {}    # neighbour mask -> atlas coords (in the dry block)
 
+var farm_src: TileSetAtlasSource     # FarmLand_Tile.png atlas source
+var farm_image: Image                # its pixels (used to build the wet tiles)
+var wet_sprites: Dictionary = {}     # Vector2i cell -> Sprite2D
+var wet_cache: Dictionary = {}       # Vector4i(wet x, wet y, dry x, dry y) -> ImageTexture
+
 
 func _ready() -> void:
 	add_to_group("farm")
@@ -61,12 +73,16 @@ func _ready() -> void:
 	layer.name = "FarmLayer"
 	layer.tile_set = ts
 	add_child(layer)
+	wet_overlay = Node2D.new()
+	wet_overlay.name = "WetOverlay"
+	add_child(wet_overlay)            # above FarmLayer, below the cursor
 	cursor = Node2D.new()
 	cursor.name = "TargetCursor"
-	add_child(cursor)                 # added after FarmLayer, so it draws on top of it
+	add_child(cursor)                 # added last, so it draws on top of everything
 	cursor.draw.connect(_draw_cursor)
 	_build_shape_lookup(ts)
 	_build_solid_path_tiles(ts)
+	_build_wet_tools(ts)
 	var weather := get_tree().get_first_node_in_group("weather")
 	if weather != null and weather.raining:
 		set_raining(true)
@@ -152,8 +168,10 @@ func set_raining(on: bool) -> void:
 	raining = on
 	if not on:
 		return
+	# Update every cell first, then redraw, so each tile sees its neighbours' final wetness.
 	for cell in soil.keys():
 		soil[cell] = _wet_version(soil[cell])
+	for cell in soil.keys():
 		_draw_cell(cell)
 
 
@@ -164,6 +182,10 @@ func _wet_version(state: int) -> int:
 		Soil.SEEDED:
 			return Soil.WET_SEEDED
 	return state
+
+
+func _is_wet(state: int) -> bool:
+	return state == Soil.WET or state == Soil.WET_SEEDED
 
 
 # ---------------------------------------------------------------- actions
@@ -195,13 +217,13 @@ func get_soil(cell: Vector2i) -> int:
 
 ## Use this later for planting, e.g. set_soil(cell, Farm.Soil.SEEDED).
 func set_soil(cell: Vector2i, state: int) -> void:
-	var was_farmland := soil.has(cell)
 	soil[cell] = _wet_version(state) if raining else state
 	_draw_cell(cell)
-	if not was_farmland:              # a brand-new cell also reshapes its neighbours
-		for off in NEIGHBOR_OFFSETS:
-			if soil.has(cell + off):
-				_draw_cell(cell + off)
+	# Neighbours always get redrawn: a new tile reshapes the dry outline,
+	# and a newly wet/dry tile reshapes the wet outline.
+	for off in NEIGHBOR_OFFSETS:
+		if soil.has(cell + off):
+			_draw_cell(cell + off)
 
 
 # ---------------------------------------------------------------- internals
@@ -235,18 +257,69 @@ func _ground_layers() -> Array[TileMapLayer]:
 	return found
 
 
+## Draws one cell:
+##  1. FarmLayer: dry (or seeded) look, shaped by every farmland neighbour.
+##  2. If wet: a sprite with the wet look, shaped by WET neighbours only, whose background
+##     pixels are filled from the dry tile underneath.
 func _draw_cell(cell: Vector2i) -> void:
-	var shape: Vector2i = shape_lookup.get(_shape_mask(cell), Vector2i.ZERO)
-	var block := int(soil[cell])
-	layer.set_cell(cell, FARM_SOURCE_ID, shape + Vector2i(0, block * BLOCK_ROWS))
+	var state: int = soil[cell]
+	var dry_block: int = Soil.SEEDED if (state == Soil.SEEDED or state == Soil.WET_SEEDED) else Soil.DRY
+	var dry_shape: Vector2i = shape_lookup.get(_shape_mask(cell, false), Vector2i.ZERO)
+	var dry_coords := dry_shape + Vector2i(0, dry_block * BLOCK_ROWS)
+	layer.set_cell(cell, FARM_SOURCE_ID, dry_coords)
+
+	if _is_wet(state):
+		var wet_shape: Vector2i = shape_lookup.get(_shape_mask(cell, true), Vector2i.ZERO)
+		var wet_coords := wet_shape + Vector2i(0, state * BLOCK_ROWS)
+		_set_wet_sprite(cell, _get_wet_texture(wet_coords, dry_coords))
+	else:
+		_clear_wet_sprite(cell)
 
 
-## Bit i set = neighbour i is farmland. A corner only counts when both sides touching it do too
+func _set_wet_sprite(cell: Vector2i, tex: Texture2D) -> void:
+	var sprite: Sprite2D = wet_sprites.get(cell)
+	if sprite == null:
+		sprite = Sprite2D.new()
+		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		sprite.position = layer.map_to_local(cell)
+		wet_overlay.add_child(sprite)
+		wet_sprites[cell] = sprite
+	sprite.texture = tex
+
+
+func _clear_wet_sprite(cell: Vector2i) -> void:
+	var sprite: Sprite2D = wet_sprites.get(cell)
+	if sprite != null:
+		sprite.queue_free()
+		wet_sprites.erase(cell)
+
+
+## Wet tile image where every background / see-through pixel is replaced by the pixel
+## of the dry tile underneath. Built once per combination, then cached.
+func _get_wet_texture(wet_coords: Vector2i, dry_coords: Vector2i) -> Texture2D:
+	var key := Vector4i(wet_coords.x, wet_coords.y, dry_coords.x, dry_coords.y)
+	if wet_cache.has(key):
+		return wet_cache[key]
+	var wet_img := farm_image.get_region(farm_src.get_tile_texture_region(wet_coords))
+	var dry_img := farm_image.get_region(farm_src.get_tile_texture_region(dry_coords))
+	for y in wet_img.get_height():
+		for x in wet_img.get_width():
+			var c := wet_img.get_pixel(x, y)
+			if c.a < 1.0 or c.is_equal_approx(BG_COLOR):
+				wet_img.set_pixel(x, y, dry_img.get_pixel(x, y))
+	var tex := ImageTexture.create_from_image(wet_img)
+	wet_cache[key] = tex
+	return tex
+
+
+## Bit i set = neighbour i counts. A corner only counts when both sides touching it do too
 ## (that is how the 47-tile set is drawn).
-func _shape_mask(cell: Vector2i) -> int:
+## wet_only = false: any farmland counts (dry outline). wet_only = true: only WET farmland counts.
+func _shape_mask(cell: Vector2i, wet_only: bool = false) -> int:
 	var has: Array[bool] = []
 	for off in NEIGHBOR_OFFSETS:
-		has.append(soil.has(cell + off))
+		var n: int = soil.get(cell + off, -1)
+		has.append(_is_wet(n) if wet_only else n != -1)
 	var mask := 0
 	for i in 8:
 		var on := has[i]
@@ -274,6 +347,18 @@ func _build_shape_lookup(ts: TileSet) -> void:
 				if td.get_terrain_peering_bit(NEIGHBOR_BITS[i]) == FARM_TERRAIN:
 					mask |= 1 << i
 			shape_lookup[mask] = coords
+
+
+## Grabs the farmland atlas pixels, needed to build the wet tiles.
+func _build_wet_tools(ts: TileSet) -> void:
+	farm_src = ts.get_source(FARM_SOURCE_ID) as TileSetAtlasSource
+	if farm_src == null or farm_src.texture == null:
+		push_error("Farm: tileset has no farmland atlas source %d" % FARM_SOURCE_ID)
+		return
+	farm_image = farm_src.texture.get_image()
+	if farm_image.is_compressed():
+		farm_image.decompress()
+	farm_image.convert(Image.FORMAT_RGBA8)
 
 
 ## Finds the Path tiles that are fully path (no grass, no see-through pixels) by looking at the art,
