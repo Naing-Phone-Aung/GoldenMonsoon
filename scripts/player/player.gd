@@ -6,6 +6,20 @@ const TILE_SIZE := 16
 
 @export var walk_speed: float = 100.0
 @export var run_speed: float = 200.0
+## Where the player's feet are, relative to the node origin (the sprite centre).
+## The tile you stand on - and so the tile in front of you - is worked out from this point.
+## Tools hit the tile in front of the FEET, like Stardew Valley. Nudge Y if it feels off by a row.
+@export var feet_offset: Vector2 = Vector2(0, 14)
+## Shows the green/red square on the tile your tool will hit.
+@export var show_target: bool = false
+## Tick to make it rain (or press R in game). Rain also waters farmland automatically.
+@export var raining: bool = false:
+	set(value):
+		raining = value
+		if is_inside_tree():
+			var weather := get_tree().get_first_node_in_group("weather")
+			if weather != null:
+				weather.set_raining(value)
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 
@@ -27,6 +41,17 @@ func _ready() -> void:
 	add_to_group("player")
 	current_tool = hotbar[selected_slot]
 	_ensure_farm.call_deferred()
+	_ensure_weather.call_deferred()
+
+
+# Rain is added automatically too (above the world, below the hotbar).
+func _ensure_weather() -> void:
+	var weather := get_tree().get_first_node_in_group("weather")
+	if weather == null:
+		weather = Weather.new()
+		weather.name = "Weather"
+		get_parent().add_child(weather)
+	weather.set_raining(raining, true)        # start in whatever state the checkbox says
 
 
 # If the scene has no Farm node, add one right after the tile layers (so farmland
@@ -193,9 +218,9 @@ func _view() -> String:
 	return "side"
 
 
-## The point one tile in front of the player - the tile a tool hits.
+## The point one tile in front of the player's feet - the tile a tool hits.
 func get_target_position() -> Vector2:
-	return global_position + _facing_vector() * TILE_SIZE
+	return global_position + feet_offset + _facing_vector() * TILE_SIZE
 
 
 func _facing_vector() -> Vector2:

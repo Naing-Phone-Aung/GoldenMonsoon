@@ -1,7 +1,7 @@
 class_name Farm
 extends Node2D
 ## Tilling + watering.
-##   hoe on PATH ground  -> dry farmland
+##   hoe on solid PATH ground (the all-brown middle tiles, never the grassy edges/corners) -> dry farmland
 ##   watering can on dry farmland -> wet farmland
 ##
 ## FarmLand_Tile.png holds 4 soil looks, each a full 47-tile autotile set stacked
@@ -16,7 +16,7 @@ enum Soil { DRY, WET, SEEDED, WET_SEEDED }   # = which 6-row block of FarmLand_T
 const TILESET_PATH := "res://scenes/tiles/tileset_farm.tres"
 const FARM_SOURCE_ID := 4          # FarmLand_Tile.png in the tileset
 const FARM_TERRAIN := 4            # "Farm" terrain
-const PATH_TERRAIN := 2            # "Path" terrain - the only ground you can till
+const PATH_SOURCE_ID := 2          # Path_Tile.png in the tileset - the only ground you can till
 const BLOCK_ROWS := 6              # rows per soil look in the atlas
 const ATLAS_COLS := 8
 
@@ -40,11 +40,13 @@ const NEIGHBOR_OFFSETS := [
 ## TileMapLayer next to this node.
 @export var path_layers: Array[TileMapLayer] = []
 
+var raining := false                 # set by Weather; rain waters farmland automatically
 var layer: TileMapLayer
 var cursor: Node2D                   # square showing which tile the tool will hit
 var cursor_cell := Vector2i.ZERO
 var cursor_ok := false
 var cursor_shown := false
+var solid_path_tiles: Dictionary = {}  # atlas coords of Path tiles that are 100% path (no grass pixels)
 var soil: Dictionary = {}            # Vector2i cell -> Soil
 var shape_lookup: Dictionary = {}    # neighbour mask -> atlas coords (in the dry block)
 
@@ -61,6 +63,10 @@ func _ready() -> void:
 	add_child(cursor)                 # added after FarmLayer, so it draws on top of it
 	cursor.draw.connect(_draw_cursor)
 	_build_shape_lookup(ts)
+	_build_solid_path_tiles(ts)
+	var weather := get_tree().get_first_node_in_group("weather")
+	if weather != null and weather.raining:
+		set_raining(true)
 
 
 # Green square = the tool will work on that tile, red = it won't.
@@ -69,7 +75,7 @@ func _process(_delta: float) -> void:
 	if player == null:
 		return
 	var tool_name: String = player.current_tool
-	var shown := tool_name == "hoe" or tool_name == "water"
+	var shown: bool = player.show_target and (tool_name == "hoe" or tool_name == "water")
 	var cell := world_to_cell(player.get_target_position())
 	var ok := shown and _can_use(tool_name, cell)
 	if shown != cursor_shown or cell != cursor_cell or ok != cursor_ok:
@@ -92,7 +98,7 @@ func _draw_cursor() -> void:
 func _can_use(tool_name: String, cell: Vector2i) -> bool:
 	match tool_name:
 		"hoe":
-			return not soil.has(cell) and _is_path(cell)
+			return not soil.has(cell) and _is_solid_path(cell)
 		"water":
 			var state := get_soil(cell)
 			return state == Soil.DRY or state == Soil.SEEDED
@@ -117,10 +123,31 @@ func use_tool(tool_name: String, cell: Vector2i) -> void:
 			water(cell)
 
 
+# ---------------------------------------------------------------- rain
+## While it rains, every farmland tile is wet, and newly tilled/seeded tiles come out wet too.
+## (Soil stays wet after the rain stops until you add a day/night cycle that dries it.)
+func set_raining(on: bool) -> void:
+	raining = on
+	if not on:
+		return
+	for cell in soil.keys():
+		soil[cell] = _wet_version(soil[cell])
+		_draw_cell(cell)
+
+
+func _wet_version(state: int) -> int:
+	match state:
+		Soil.DRY:
+			return Soil.WET
+		Soil.SEEDED:
+			return Soil.WET_SEEDED
+	return state
+
+
 # ---------------------------------------------------------------- actions
 ## Turns path ground into dry farmland. Returns true if something changed.
 func till(cell: Vector2i) -> bool:
-	if soil.has(cell) or not _is_path(cell):
+	if soil.has(cell) or not _is_solid_path(cell):
 		return false
 	set_soil(cell, Soil.DRY)
 	return true
@@ -147,7 +174,7 @@ func get_soil(cell: Vector2i) -> int:
 ## Use this later for planting, e.g. set_soil(cell, Farm.Soil.SEEDED).
 func set_soil(cell: Vector2i, state: int) -> void:
 	var was_farmland := soil.has(cell)
-	soil[cell] = state
+	soil[cell] = _wet_version(state) if raining else state
 	_draw_cell(cell)
 	if not was_farmland:              # a brand-new cell also reshapes its neighbours
 		for off in NEIGHBOR_OFFSETS:
@@ -156,11 +183,13 @@ func set_soil(cell: Vector2i, state: int) -> void:
 
 
 # ---------------------------------------------------------------- internals
-func _is_path(cell: Vector2i) -> bool:
+## True only for the all-brown middle path tiles. Edge and corner path tiles contain grass,
+## so they can't be hoed.
+func _is_solid_path(cell: Vector2i) -> bool:
 	var world_pos := layer.to_global(layer.map_to_local(cell))
 	for l in _ground_layers():
-		var data := l.get_cell_tile_data(l.local_to_map(l.to_local(world_pos)))
-		if data != null and data.terrain_set == 0 and data.terrain == PATH_TERRAIN:
+		var c := l.local_to_map(l.to_local(world_pos))
+		if l.get_cell_source_id(c) == PATH_SOURCE_ID and solid_path_tiles.has(l.get_cell_atlas_coords(c)):
 			return true
 	return false
 
@@ -170,8 +199,8 @@ func _explain_no_path(cell: Vector2i) -> void:
 	var names: Array[String] = []
 	for l in _ground_layers():
 		names.append(str(l.name))
-	print("Farm: no Path tile at cell %s, so nothing to till. Layers checked: %s. " % [cell, names]
-		+ "Paint Path terrain on a TileMapLayer that has the tileset assigned.")
+	print("Farm: no solid (all-brown) Path tile at cell %s, so nothing to till. Layers checked: %s. " % [cell, names]
+		+ "Edge/corner path tiles have grass and can't be hoed.")
 
 
 func _ground_layers() -> Array[TileMapLayer]:
@@ -223,3 +252,27 @@ func _build_shape_lookup(ts: TileSet) -> void:
 				if td.get_terrain_peering_bit(NEIGHBOR_BITS[i]) == FARM_TERRAIN:
 					mask |= 1 << i
 			shape_lookup[mask] = coords
+
+
+## Finds the Path tiles that are fully path (no grass, no see-through pixels) by looking at the art,
+## so the middle tile and its plain variants work and the grassy edges/corners don't.
+func _build_solid_path_tiles(ts: TileSet) -> void:
+	var src := ts.get_source(PATH_SOURCE_ID) as TileSetAtlasSource
+	if src == null or src.texture == null:
+		push_error("Farm: tileset has no Path atlas source %d" % PATH_SOURCE_ID)
+		return
+	var img := src.texture.get_image()
+	for i in src.get_tiles_count():
+		var coords := src.get_tile_id(i)
+		var rect := src.get_tile_texture_region(coords)
+		var solid := true
+		for y in range(rect.position.y, rect.end.y):
+			for x in range(rect.position.x, rect.end.x):
+				var col := img.get_pixel(x, y)
+				if col.a < 1.0 or (col.g > col.r and col.g > col.b):   # see-through or grass-green
+					solid = false
+					break
+			if not solid:
+				break
+		if solid:
+			solid_path_tiles[coords] = true
