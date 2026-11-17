@@ -14,7 +14,13 @@ extends Node2D
 ##             its own rounded outline instead of copying the dry patch's outline.
 ##
 ## The player talks to this node through the "farm" group:
-##   world_to_cell(pos), cell_to_world(cell), harvest(cell), use_tool(tool_name, cell)
+##   world_to_cell(pos), cell_to_world(cell), harvest(cell), use_tool(tool_name, cell, seed_type)
+##
+## PLANTING: plant() turns tilled soil into Soil.SEEDED/WET_SEEDED and spawns a Crop
+## (scenes/crops/<name>.tscn, scripts/world/crop.gd). A crop only grows one stage on a day it
+## was watered - water() tells the planted crop it got watered, and on TimeManager.day_changed
+## every planted crop advances (or not) and then any soil that isn't raining dries back from
+## wet to its dry/seeded look, so you must re-water every day for growth to continue.
 
 enum Soil { DRY, WET, SEEDED, WET_SEEDED }   # = which 6-row block of FarmLand_Tile.png
 
@@ -25,6 +31,7 @@ const PATH_SOURCE_ID := 2          # Path_Tile.png in the tileset - the only gro
 const BLOCK_ROWS := 6              # rows per soil look in the atlas
 const ATLAS_COLS := 8
 const BG_COLOR := Color8(228, 166, 114)   # outer background colour of the farm tiles (path colour)
+const CROP_SCENE_PATH := "res://scenes/crops/%s.tscn"
 
 # Neighbour order used for the shape mask (matches the tileset's peering bits).
 const NEIGHBOR_BITS := [
@@ -46,9 +53,26 @@ const NEIGHBOR_OFFSETS := [
 ## TileMapLayer next to this node.
 @export var path_layers: Array[TileMapLayer] = []
 
+@export_group("Debug (run the game, select Farm in the Remote tab, tick a box)")
+## Grows every planted crop one stage, as if every one of them got watered today.
+@export var force_grow_all_crops: bool = false:
+	set(v):
+		if v and is_inside_tree() and not Engine.is_editor_hint():
+			for cell in planted.keys():
+				planted[cell].water()
+				planted[cell].grow_one_day()
+## Removes every planted crop (soil stays tilled/watered).
+@export var clear_all_crops: bool = false:
+	set(v):
+		if v and is_inside_tree() and not Engine.is_editor_hint():
+			for cell in planted.keys().duplicate():
+				_remove_crop(cell)
+
 var raining := false                 # set by Weather; rain waters farmland automatically
 var layer: TileMapLayer
 var wet_overlay: Node2D              # holds one Sprite2D per wet tile
+var crops: Node2D                    # holds one Crop per planted cell
+var planted: Dictionary = {}         # Vector2i cell -> Crop
 var cursor: Node2D                   # draws the action area + the tile under the mouse
 var cursor_cell := Vector2i.ZERO     # tile under the mouse
 var cursor_ok := false
@@ -75,7 +99,10 @@ func _ready() -> void:
 	add_child(layer)
 	wet_overlay = Node2D.new()
 	wet_overlay.name = "WetOverlay"
-	add_child(wet_overlay)            # above FarmLayer, below the cursor
+	add_child(wet_overlay)            # above FarmLayer, below the crops
+	crops = Node2D.new()
+	crops.name = "Crops"
+	add_child(crops)                  # above the wet tiles, below the cursor
 	cursor = Node2D.new()
 	cursor.name = "TargetCursor"
 	add_child(cursor)                 # added last, so it draws on top of everything
@@ -86,6 +113,9 @@ func _ready() -> void:
 	var weather := get_tree().get_first_node_in_group("weather")
 	if weather != null and weather.raining:
 		set_raining(true)
+	var tm := get_node_or_null("/root/TimeManager")
+	if tm != null:
+		tm.day_changed.connect(_on_new_day)
 
 
 # Green tile = under the mouse and the tool works there (red only when always_show_target is on).
@@ -95,7 +125,7 @@ func _process(_delta: float) -> void:
 	if player == null:
 		return
 	var tool_name: String = player.current_tool
-	var is_tool := tool_name == "hoe" or tool_name == "water"
+	var is_tool := tool_name == "hoe" or tool_name == "water" or tool_name.ends_with("_seeds")
 	var center := world_to_cell(player.get_feet_position())
 	var cell := world_to_cell(player.get_global_mouse_position())
 	var show_area: bool = player.show_action_area and is_tool
@@ -128,13 +158,16 @@ func _draw_cursor() -> void:
 		cursor.draw_rect(rect, color, false, 1.0)
 
 
+## tool_name here is the raw hotbar item ("hoe", "water", or "<crop>_seeds").
 func _can_use(tool_name: String, cell: Vector2i) -> bool:
-	match tool_name:
-		"hoe":
-			return not soil.has(cell) and _is_solid_path(cell)
-		"water":
-			var state := get_soil(cell)
-			return state == Soil.DRY or state == Soil.SEEDED
+	if tool_name == "hoe":
+		return not soil.has(cell) and _is_solid_path(cell)
+	if tool_name == "water":
+		var state := get_soil(cell)
+		return state == Soil.DRY or state == Soil.SEEDED
+	if tool_name.ends_with("_seeds"):
+		var state := get_soil(cell)
+		return (state == Soil.DRY or state == Soil.WET) and not planted.has(cell)
 	return false
 
 
@@ -148,17 +181,26 @@ func cell_to_world(cell: Vector2i) -> Vector2:
 	return layer.to_global(layer.map_to_local(cell))
 
 
-func harvest(_cell: Vector2i) -> bool:
-	return false                      # crops come later
+## Picks a ripe crop and returns its item name ("chili", "rice", ...), or "" if there is
+## no ripe crop at this cell. Soil reverts from seeded back to plain tilled ground.
+func harvest(cell: Vector2i) -> String:
+	var crop: Crop = planted.get(cell)
+	if crop == null or not crop.is_ripe():
+		return ""
+	var crop_name := crop.crop_name
+	_remove_crop(cell)
+	return crop_name
 
 
-func use_tool(tool_name: String, cell: Vector2i) -> void:
+func use_tool(tool_name: String, cell: Vector2i, seed_type: String = "") -> void:
 	match tool_name:
 		"hoe":
 			if not till(cell) and not soil.has(cell):
 				_explain_no_path(cell)
 		"water":
 			water(cell)
+		"seeds":
+			plant(cell, seed_type)
 
 
 # ---------------------------------------------------------------- rain
@@ -198,15 +240,70 @@ func till(cell: Vector2i) -> bool:
 
 
 ## Dry farmland -> wet farmland (seeded -> wet seeded). Returns true if something changed.
+## Also tells any planted crop here that it got watered today, so it can grow at the next day change.
 func water(cell: Vector2i) -> bool:
+	var watered := false
 	match get_soil(cell):
 		Soil.DRY:
 			set_soil(cell, Soil.WET)
-			return true
+			watered = true
 		Soil.SEEDED:
 			set_soil(cell, Soil.WET_SEEDED)
-			return true
-	return false
+			watered = true
+	if watered and planted.has(cell):
+		planted[cell].water()
+	return watered
+
+
+## Plants a crop on tilled (dry or wet) ground that isn't already planted. Turns the soil
+## into its seeded look, and if it was already wet, the new seed is watered immediately too.
+func plant(cell: Vector2i, crop_type: String) -> bool:
+	if planted.has(cell):
+		return false
+	var state := get_soil(cell)
+	if state != Soil.DRY and state != Soil.WET:
+		return false
+	var scene: PackedScene = load(CROP_SCENE_PATH % crop_type)
+	if scene == null:
+		push_error("Farm: no crop scene for '%s' (expected %s)" % [crop_type, CROP_SCENE_PATH % crop_type])
+		return false
+	var crop: Crop = scene.instantiate()
+	crop.position = layer.map_to_local(cell)
+	crops.add_child(crop)
+	planted[cell] = crop
+	var was_wet := state == Soil.WET
+	set_soil(cell, Soil.WET_SEEDED if was_wet else Soil.SEEDED)
+	if was_wet:
+		crop.water()               # already-wet ground waters the seed the moment it's planted
+	return true
+
+
+func _remove_crop(cell: Vector2i) -> void:
+	var crop: Crop = planted.get(cell)
+	if crop == null:
+		return
+	crop.queue_free()
+	planted.erase(cell)
+	var state := get_soil(cell)
+	if state == Soil.WET_SEEDED:
+		set_soil(cell, Soil.WET)
+	elif state == Soil.SEEDED:
+		set_soil(cell, Soil.DRY)
+
+
+## TimeManager.day_changed: every planted crop grows one stage if it was watered yesterday,
+## then any soil that isn't currently raining dries from wet back to its dry/seeded look.
+func _on_new_day(_day: int, _season: int, _year: int) -> void:
+	for crop in planted.values():
+		crop.grow_one_day()
+	if raining:
+		return
+	for cell in soil.keys():
+		match soil[cell]:
+			Soil.WET:
+				set_soil(cell, Soil.DRY)
+			Soil.WET_SEEDED:
+				set_soil(cell, Soil.SEEDED)
 
 
 # ---------------------------------------------------------------- soil state

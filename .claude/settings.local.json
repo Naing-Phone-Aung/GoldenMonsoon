@@ -12,7 +12,8 @@
       "Bash(cp -v '/c/Users/User/Downloads/golden_monsoon_items_ready/scenes/items/*' '/d/Game Project 2026/GoldenMonsoon/scenes/items/')",
       "Bash(cp -v /c/Users/User/Downloads/golden_monsoon_items_ready/scenes/ui/hud.tscn '/d/Game Project 2026/GoldenMonsoon/scenes/ui/')",
       "Bash(cp -v /c/Users/User/Downloads/golden_monsoon_items_ready/scripts/items/pickup.gd '/d/Game Project 2026/GoldenMonsoon/scripts/items/')",
-      "Bash(python3 -c \"import sys; print\\(sys.version\\)\")"
+      "Bash(python3 -c \"import sys; print\\(sys.version\\)\")",
+      "Bash(powershell -Command \"Select-String -Path 'D:\\\\Game Project 2026\\\\GoldenMonsoon\\\\project.godot' -Pattern 'main_scene'; Select-String -Path \\(Get-ChildItem -Recurse 'D:\\\\Game Project 2026\\\\GoldenMonsoon' -Filter '*.uid' -ErrorAction SilentlyContinue\\) -Pattern 'cuipgpbix0vtn' -ErrorAction SilentlyContinue\")"
     ]
   }
 }

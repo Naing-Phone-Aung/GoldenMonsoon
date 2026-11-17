@@ -5,6 +5,8 @@ signal energy_changed
 signal energy_empty                      # energy just hit 0 (the energy bar blinks red)
 
 const TILE_SIZE := 16
+const SEED_TYPES := ["chili", "rice", "corn", "tomato", "eggplant", "onion", "roselle"]
+const SEED_SUFFIX := "_seeds"    # hotbar item id for a seed packet, e.g. "chili_seeds"
 
 @export var walk_speed: float = 100.0
 @export var run_speed: float = 200.0
@@ -42,9 +44,12 @@ const TILE_SIZE := 16
 @export var hoe_energy_cost: float = 2.0
 ## Energy one use of the watering can costs.
 @export var water_energy_cost: float = 1.0
+## Energy one planted seed costs.
+@export var seed_energy_cost: float = 1.0
 ## Refill to full when a new day starts (after sleeping).
 @export var refill_on_new_day: bool = true
-## When energy reaches 0 the player faints and the game restarts (placeholder until sleeping is added).
+## When energy reaches 0 the player faints and the game restarts - sleeping in a bed (E, or
+## automatically at 2am) is the normal way to end a day; fainting is only the harsh fallback.
 @export var faint_at_zero_energy: bool = true
 ## Tick to refill energy right now (handy for testing).
 @export var refill_energy: bool = false:
@@ -58,17 +63,23 @@ const TILE_SIZE := 16
 var last_direction: String = "south"
 const HOTBAR_SIZE := 10
 const MAX_STACK := 99
+const BAG_SLOTS := 20                    # distinct item TYPES the bag can hold (each stacks to MAX_STACK)
 
 # Hotbar slots 1..0 (keys 1-9 = slots 0-8, key 0 = slot 9). "" = empty slot.
-var hotbar: Array[String] = ["hoe", "water", "", "", "", "", "", "", "", ""]
+# All 7 seed packets start in your bag already, one per slot, next to the hoe and watering can.
+var hotbar: Array[String] = ["hoe", "water", "chili_seeds", "rice_seeds", "corn_seeds",
+	"tomato_seeds", "eggplant_seeds", "onion_seeds", "roselle_seeds", ""]
 # Stack size per slot. -1 = a tool (no number shown), 0 = empty slot.
-var hotbar_counts: Array[int] = [-1, -1, 0, 0, 0, 0, 0, 0, 0, 0]
+var hotbar_counts: Array[int] = [-1, -1, -1, -1, -1, -1, -1, -1, -1, 0]
 var selected_slot: int = 0
 var current_tool: String = "hoe"         # always mirrors hotbar[selected_slot]
-var items: Dictionary = {}               # things you carry, e.g. {"egg": 2}
+# The actual bag: every crop/egg/etc you carry, e.g. {"egg": 2, "chili": 5}. Independent of the
+# hotbar (which is tools + seed packets only) - see the full bag screen (KEY_I) to view it all.
+var items: Dictionary = {}
 var is_busy: bool = false
 var energy: float = 100.0                # current energy (starts full)
 var fainting: bool = false
+var is_sleeping: bool = false
 
 
 func _ready() -> void:
@@ -79,8 +90,10 @@ func _ready() -> void:
 	var tm := get_node_or_null("/root/TimeManager")
 	if tm:
 		tm.day_changed.connect(_on_new_day)
+		tm.day_ended.connect(_on_day_ended)      # 2am and still awake -> fall asleep automatically
 	_ensure_farm.call_deferred()
 	_ensure_weather.call_deferred()
+	_ensure_inventory.call_deferred()
 
 
 # ---------------------------------------------------------------- energy
@@ -90,7 +103,18 @@ func get_tool_cost(tool_name: String) -> float:
 			return hoe_energy_cost
 		"water":
 			return water_energy_cost
+	if _seed_crop(tool_name) != "":
+		return seed_energy_cost
 	return 0.0
+
+
+## "chili_seeds" -> "chili" (the crop it plants), or "" if item_id isn't a seed packet.
+func _seed_crop(item_id: String) -> String:
+	if item_id.ends_with(SEED_SUFFIX):
+		var crop := item_id.substr(0, item_id.length() - SEED_SUFFIX.length())
+		if crop in SEED_TYPES:
+			return crop
+	return ""
 
 
 func restore_energy() -> void:
@@ -124,6 +148,38 @@ func _faint() -> void:
 	tween.tween_property(fade, "color:a", 1.0, 1.0)
 	await tween.finished
 	_restart_game()
+
+
+## Climb into a bed and deliberately end the day - a gentle alternative to fainting.
+## No scene reload and no reset to day 1: just fade out, advance to the next morning
+## (TimeManager.start_new_day, which also refills energy via _on_new_day), fade back in.
+func _sleep() -> void:
+	if is_sleeping or fainting:
+		return
+	is_sleeping = true
+	is_busy = true
+	velocity = Vector2.ZERO
+
+	var fade := _make_fade_layer()
+	var tween := create_tween()
+	tween.tween_property(fade, "color:a", 1.0, 0.6)
+	await tween.finished
+
+	var tm := get_node_or_null("/root/TimeManager")
+	if tm:
+		tm.start_new_day()
+	await get_tree().create_timer(0.3).timeout
+
+	_fade_in_after_restart()                 # same fade layer/group as the faint flow, reused here
+	is_busy = false
+	is_sleeping = false
+
+
+## TimeManager hits 2am (day_ended) with nobody having gone to bed - the clock would
+## otherwise just stay paused forever, so put the player to sleep automatically.
+func _on_day_ended() -> void:
+	if not is_sleeping and not fainting:
+		_sleep()
 
 
 ## Full restart for now: clock back to day 1, scene reloaded. The black screen stays up
@@ -175,6 +231,16 @@ func _ensure_weather() -> void:
 	weather.set_raining(raining, true)        # start in whatever state the checkbox says
 
 
+# Add the bag-screen UI automatically too, so pressing I always works even in a scene
+# that doesn't already have one placed (same auto-provisioning as weather, below).
+func _ensure_inventory() -> void:
+	if get_tree().get_first_node_in_group("inventory_ui") != null:
+		return
+	var inv := Inventory.new()
+	inv.name = "Inventory"
+	get_parent().add_child(inv)
+
+
 # If the scene has no Farm node, add one right after the tile layers (so farmland
 # draws above the path but under the player and animals).
 func _ensure_farm() -> void:
@@ -192,7 +258,8 @@ func _ensure_farm() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if is_busy:
+	if is_busy or _inventory_open():
+		velocity = Vector2.ZERO
 		return
 
 	var input_vector := Input.get_vector("move_left", "move_right", "move_up", "move_down")
@@ -207,6 +274,14 @@ func _physics_process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_I:
+		_toggle_inventory()
+		return
+	if _inventory_open():
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+			_toggle_inventory()
+		return                                   # bag's open: tools/pickup/hotbar don't respond
+
 	# Event-based (not polled) so a click the hotbar already used never swings the tool.
 	if event.is_action_pressed("use_tool"):
 		if is_busy:
@@ -221,7 +296,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_E:
-			_try_pickup()
+			_try_interact()
 		elif event.keycode >= KEY_1 and event.keycode <= KEY_9:
 			select_slot(event.keycode - KEY_1)      # keys 1..9 -> slots 0..8
 		elif event.keycode == KEY_0:
@@ -233,20 +308,40 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cycle_slot(1)
 
 
+# ---------------------------------------------------------------- bag screen
+func _inventory_open() -> bool:
+	var inv := get_tree().get_first_node_in_group("inventory_ui")
+	return inv != null and inv.is_open()
+
+
+func _toggle_inventory() -> void:
+	var inv := get_tree().get_first_node_in_group("inventory_ui")
+	if inv != null:
+		inv.toggle()
+
+
 # ---------------------------------------------------------------- items
-func _try_pickup() -> void:
+## E key: picks up a nearby ground item, or - if there's none in range - lets you sleep in
+## a nearby bed instead. Only one of the two happens per press.
+func _try_interact() -> void:
 	if is_busy:
 		return
 	for pickup in get_tree().get_nodes_in_group("pickup"):
 		if pickup.global_position.distance_to(global_position) < pickup.pickup_range:
-			if add_item(pickup.item_id):        # hotbar full -> item stays on the ground
+			if add_item(pickup.item_id):        # bag full -> item stays on the ground
 				pickup.queue_free()
+			return
+	for bed in get_tree().get_nodes_in_group("bed"):
+		if bed.global_position.distance_to(global_position) < bed.interact_range:
+			_sleep()
 			return
 
 
-## Returns true if the item was stored. Eggs stack up to MAX_STACK per slot.
+## Returns true if the item was stored. Tools/seed packets go in the hotbar (one copy each);
+## everything else (crops, eggs, ...) goes straight in the bag - see items, below - which is
+## shown in full on the bag screen (KEY_I), not just the hotbar's one visible row.
 func add_item(item_id: String) -> bool:
-	if item_id == "hoe" or item_id == "water":
+	if item_id == "hoe" or item_id == "water" or _seed_crop(item_id) != "":
 		if item_id in hotbar:
 			return false
 		var free_tool := hotbar.find("")
@@ -255,18 +350,14 @@ func add_item(item_id: String) -> bool:
 		hotbar[free_tool] = item_id
 		hotbar_counts[free_tool] = -1
 	else:
-		var slot := -1
-		for i in HOTBAR_SIZE:                    # 1) top up an existing stack
-			if hotbar[i] == item_id and hotbar_counts[i] < MAX_STACK:
-				slot = i
-				break
-		if slot == -1:                           # 2) otherwise take the first empty slot
-			slot = hotbar.find("")
-		if slot == -1:
-			return false                         # no room
-		hotbar[slot] = item_id
-		hotbar_counts[slot] += 1
-		items[item_id] = items.get(item_id, 0) + 1
+		if items.has(item_id):
+			if items[item_id] >= MAX_STACK:
+				return false                     # that stack is full - caller should drop it instead
+			items[item_id] += 1
+		elif items.size() < BAG_SLOTS:
+			items[item_id] = 1
+		else:
+			return false                         # bag has no free slot for a new item type
 	inventory_changed.emit()
 	return true
 
@@ -291,10 +382,15 @@ func _cycle_slot(direction: int) -> void:
 
 
 func _use_tool(farm: Node, cell: Vector2i) -> void:
-	if farm.harvest(cell):     # a ripe crop is picked, even with empty hands
+	var crop_name: String = farm.harvest(cell)   # a ripe crop is picked, even with empty hands
+	if crop_name != "":
+		if not add_item(crop_name):
+			# Bag's full - the crop falls to the ground instead of vanishing.
+			Pickup.spawn(crop_name, farm.cell_to_world(cell), farm.get_parent())
 		return
 
-	if current_tool != "hoe" and current_tool != "water":
+	var seed_crop := _seed_crop(current_tool)
+	if current_tool != "hoe" and current_tool != "water" and seed_crop == "":
 		return                                   # eggs etc. are not tools
 
 	if fainting:
@@ -309,12 +405,16 @@ func _use_tool(farm: Node, cell: Vector2i) -> void:
 	is_busy = true
 	velocity = Vector2.ZERO
 	_face_cell(farm, cell)                        # swing toward the tile you clicked
-	# The swing animation plays ONLY here, while the action happens.
-	var anim := current_tool + "_" + _view()
+	# The swing animation plays ONLY here, while the action happens. Planting has no
+	# dedicated swing animation yet, so it just uses the watering-can motion if present.
+	var anim := (current_tool if seed_crop == "" else "water") + "_" + _view()
 	if animated_sprite.sprite_frames.has_animation(anim):
 		animated_sprite.play(anim)
 		await animated_sprite.animation_finished
-	farm.use_tool(current_tool, cell)
+	if seed_crop != "":
+		farm.use_tool("seeds", cell, seed_crop)
+	else:
+		farm.use_tool(current_tool, cell)
 	if energy <= 0.0 and faint_at_zero_energy:
 		await _faint()                            # stays busy: no moving while fainted
 		return
@@ -357,7 +457,15 @@ func _update_animation(input_vector: Vector2, is_running: bool) -> void:
 	animated_sprite.flip_h = last_direction == "west"
 
 	if input_vector == Vector2.ZERO:
-		animated_sprite.play("idle_" + _view())     # normal idle, whatever tool is selected
+		var tool_anim := current_tool + "_" + _view()
+		if (current_tool == "hoe" or current_tool == "water") and animated_sprite.sprite_frames.has_animation(tool_anim):
+			# Stand holding the tool - freeze on the first frame of its swing animation
+			# instead of the empty-handed idle pose.
+			animated_sprite.play(tool_anim)
+			animated_sprite.pause()
+			animated_sprite.frame = 0
+		else:
+			animated_sprite.play("idle_" + _view())
 	else:
 		var action := "run" if is_running else "walk"
 		animated_sprite.play(action + "_" + _view())

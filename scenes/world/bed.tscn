@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/bed.gd" id="1_bed"]
+[ext_resource type="Texture2D" path="res://assets/items/key_hint_e.png" id="2_hint"]
+
+[node name="Bed" type="Node2D"]
+script = ExtResource("1_bed")
+
+[node name="Hint" type="Sprite2D" parent="."]
+position = Vector2(0, -34)
+texture = ExtResource("2_hint")

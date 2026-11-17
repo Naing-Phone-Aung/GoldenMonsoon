@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/crop.gd" id="1_crop"]
+[ext_resource type="Texture2D" path="res://assets/crops/onion.png" id="2_tex"]
+
+[node name="Onion" type="Sprite2D"]
+texture = ExtResource("2_tex")
+offset = Vector2(0, -8)
+hframes = 6
+script = ExtResource("1_crop")
+crop_name = "onion"

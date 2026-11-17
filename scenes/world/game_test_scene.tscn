@@ -15,6 +15,14 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/hotbar.tscn" id="14_hotbar"]
 [ext_resource type="FontFile" uid="uid://cawmv8kx6gx7j" path="res://assets/fonts/PixelifySans-VariableFont_wght.ttf" id="15_21umo"]
 [ext_resource type="PackedScene" path="res://scenes/ui/clock.tscn" id="15_ccyey"]
+[ext_resource type="Texture2D" uid="uid://be42vxu6xrg2i" path="res://assets/items/corn.png" id="16_2g45t"]
+[ext_resource type="Texture2D" uid="uid://cg3tthdo26r5m" path="res://assets/items/egg.png" id="17_b28t0"]
+[ext_resource type="Texture2D" uid="uid://bw1dmvcjctxuu" path="res://assets/items/eggplant.png" id="18_b0wrp"]
+[ext_resource type="Texture2D" uid="uid://bus1mxsgbfww7" path="res://assets/items/onion.png" id="19_1nu8r"]
+[ext_resource type="Texture2D" uid="uid://by0mvnrq0ca2" path="res://assets/items/rice.png" id="20_u3251"]
+[ext_resource type="Texture2D" uid="uid://dy5y0qc4n5mpw" path="res://assets/items/roselle.png" id="21_xqilp"]
+[ext_resource type="Texture2D" uid="uid://c30gkc1sxfdy3" path="res://assets/items/tomato.png" id="22_3kdmr"]
+[ext_resource type="PackedScene" path="res://scenes/world/bed.tscn" id="23_bed"]
 
 [node name="game_test_scene" type="Node2D" unique_id=1574374871]
 
@@ -78,11 +86,43 @@ position = Vector2(273, 12)
 [node name="Egg4" parent="." unique_id=672079943 instance=ExtResource("12_1ggg8")]
 position = Vector2(258, 10)
 
+[node name="Bed" parent="." instance=ExtResource("23_bed")]
+position = Vector2(115, 8)
+
 [node name="Hotbar" parent="." unique_id=574620227 instance=ExtResource("14_hotbar")]
 
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1315565381]
 
 [node name="Clock" parent="CanvasLayer" unique_id=128106543 instance=ExtResource("15_ccyey")]
 pixel_font = ExtResource("15_21umo")
+skip_1_hour = true
 skip_to_next_day = true
 skip_to_next_season = true
+
+[node name="Corn" type="Sprite2D" parent="." unique_id=849892970]
+position = Vector2(-160, 91)
+texture = ExtResource("16_2g45t")
+
+[node name="Egg5" type="Sprite2D" parent="." unique_id=132843267]
+position = Vector2(-121, 131)
+texture = ExtResource("17_b28t0")
+
+[node name="Eggplant" type="Sprite2D" parent="." unique_id=104695443]
+position = Vector2(-139, 100)
+texture = ExtResource("18_b0wrp")
+
+[node name="Onion" type="Sprite2D" parent="." unique_id=1288070189]
+position = Vector2(-119, 98)
+texture = ExtResource("19_1nu8r")
+
+[node name="Rice" type="Sprite2D" parent="." unique_id=802271852]
+position = Vector2(-85, 114)
+texture = ExtResource("20_u3251")
+
+[node name="Roselle" type="Sprite2D" parent="." unique_id=1978501926]
+position = Vector2(-78, 148)
+texture = ExtResource("21_xqilp")
+
+[node name="Tomato" type="Sprite2D" parent="." unique_id=1320195409]
+position = Vector2(-88, 187)
+texture = ExtResource("22_3kdmr")

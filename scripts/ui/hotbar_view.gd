@@ -7,11 +7,9 @@ extends Control
 const SLOT_COUNT := 10
 const DEFAULT_FONT_PATH := "res://assets/fonts/pixel_font.ttf"   # same font as the Clock
 
-const ICONS := {
-	"hoe": preload("res://assets/items/hoe.png"),
-	"water": preload("res://assets/items/watering_can.png"),
-	"egg": preload("res://assets/items/egg.png"),
-}
+# Icon lookup now lives in ItemIcons so the hotbar, inventory screen and dropped
+# pickups all draw the same picture for the same item id.
+const ICONS := ItemIcons.ICONS
 
 # ---- layout (art pixels) ------------------------------------------------
 const SLOT := 32
@@ -355,6 +353,9 @@ func _draw_slot(i: int, selected: bool) -> void:
 	if player == null:
 		return
 	var id: String = player.hotbar[i]
+	# A seed packet ("chili_seeds") shows the crop's own icon, not a literal "seeds" icon.
+	if id.ends_with("_seeds"):
+		id = id.substr(0, id.length() - "_seeds".length())
 	var tex: Texture2D = ICONS.get(id)
 	if tex == null:
 		return
